@@ -1,0 +1,18 @@
+{
+  "name": "seo-monitor",
+  "version": "1.0.0",
+  "description": "Daily SEO monitor for static GitHub Pages sites",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node index.js --now"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.0.0",
+    "groq-sdk": "^0.3.0",
+    "node-cron": "^3.0.0",
+    "nodemailer": "^6.9.0"
+  }
+}
