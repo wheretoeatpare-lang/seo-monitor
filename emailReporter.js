@@ -106,14 +106,42 @@ class EmailReporter {
 </body>
 </html>`;
 
-    await this.transporter.sendMail({
-      from: `"SEO Monitor Bot" <${this.from}>`,
-      to: this.to,
-      subject: `SEO Report: ${changed.length} pages updated, ${skipped.length} already good — ${runDate}`,
-      html,
-    });
+    // ── STEP 1: Verify SMTP connection before sending ──────────────────────
+    console.log("  [Email] Verifying SMTP connection to Gmail...");
+    try {
+      await this.transporter.verify();
+      console.log("  [Email] SMTP connection OK ✓");
+    } catch (verifyErr) {
+      console.error("  [Email] SMTP connection FAILED!");
+      console.error("  [Email] Error code   :", verifyErr.code);
+      console.error("  [Email] Error message:", verifyErr.message);
+      console.error("  [Email] Response     :", verifyErr.response || "none");
+      console.error("  [Email] HINT: If code is EAUTH → wrong App Password or 2FA not enabled.");
+      console.error("  [Email] HINT: If code is ECONNECTION/ETIMEDOUT → Railway is blocking SMTP port.");
+      throw verifyErr;
+    }
 
-    console.log(`  Email sent to ${this.to}`);
+    // ── STEP 2: Send the email ─────────────────────────────────────────────
+    console.log(`  [Email] Sending report to ${this.to}...`);
+    try {
+      const info = await this.transporter.sendMail({
+        from: `"SEO Monitor Bot" <${this.from}>`,
+        to: this.to,
+        subject: `SEO Report: ${changed.length} pages updated, ${skipped.length} already good — ${runDate}`,
+        html,
+      });
+      console.log("  [Email] ✓ Email sent successfully!");
+      console.log("  [Email] Message ID :", info.messageId);
+      console.log("  [Email] Response   :", info.response);
+      console.log("  [Email] Accepted   :", info.accepted);
+      console.log("  [Email] Rejected   :", info.rejected);
+    } catch (sendErr) {
+      console.error("  [Email] sendMail FAILED!");
+      console.error("  [Email] Error code   :", sendErr.code);
+      console.error("  [Email] Error message:", sendErr.message);
+      console.error("  [Email] Response     :", sendErr.response || "none");
+      throw sendErr;
+    }
   }
 }
 
