@@ -5,8 +5,11 @@ class EmailReporter {
     this.from = from;
     this.to = to;
     this.transporter = nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
       auth: { user: from, pass: password },
+      tls: { rejectUnauthorized: false },
     });
   }
 
