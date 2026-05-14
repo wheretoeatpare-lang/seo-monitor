@@ -19,7 +19,7 @@ const seoChecker = new SEOChecker();
 const mailer = new EmailReporter(
   process.env.EMAIL_FROM,
   process.env.EMAIL_TO,
-  process.env.EMAIL_PASSWORD
+  process.env.RESEND_API_KEY
 );
 
 async function runSEOMonitor() {

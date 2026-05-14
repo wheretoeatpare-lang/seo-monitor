@@ -1,16 +1,10 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
 class EmailReporter {
-  constructor(from, to, password) {
+  constructor(from, to, apiKey) {
     this.from = from;
     this.to = to;
-    this.transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 587,
-      secure: false,
-      auth: { user: from, pass: password },
-      tls: { rejectUnauthorized: false },
-    });
+    this.resend = new Resend(apiKey);
   }
 
   async sendReport({ changed, skipped, errors, runDate, siteUrl }) {
@@ -106,41 +100,25 @@ class EmailReporter {
 </body>
 </html>`;
 
-    // ── STEP 1: Verify SMTP connection before sending ──────────────────────
-    console.log("  [Email] Verifying SMTP connection to Gmail...");
+    console.log(`  [Email] Sending report via Resend to ${this.to}...`);
     try {
-      await this.transporter.verify();
-      console.log("  [Email] SMTP connection OK ✓");
-    } catch (verifyErr) {
-      console.error("  [Email] SMTP connection FAILED!");
-      console.error("  [Email] Error code   :", verifyErr.code);
-      console.error("  [Email] Error message:", verifyErr.message);
-      console.error("  [Email] Response     :", verifyErr.response || "none");
-      console.error("  [Email] HINT: If code is EAUTH → wrong App Password or 2FA not enabled.");
-      console.error("  [Email] HINT: If code is ECONNECTION/ETIMEDOUT → Railway is blocking SMTP port.");
-      throw verifyErr;
-    }
-
-    // ── STEP 2: Send the email ─────────────────────────────────────────────
-    console.log(`  [Email] Sending report to ${this.to}...`);
-    try {
-      const info = await this.transporter.sendMail({
-        from: `"SEO Monitor Bot" <${this.from}>`,
+      const { data, error } = await this.resend.emails.send({
+        from: `SEO Monitor Bot <${this.from}>`,
         to: this.to,
         subject: `SEO Report: ${changed.length} pages updated, ${skipped.length} already good — ${runDate}`,
         html,
       });
-      console.log("  [Email] ✓ Email sent successfully!");
-      console.log("  [Email] Message ID :", info.messageId);
-      console.log("  [Email] Response   :", info.response);
-      console.log("  [Email] Accepted   :", info.accepted);
-      console.log("  [Email] Rejected   :", info.rejected);
-    } catch (sendErr) {
-      console.error("  [Email] sendMail FAILED!");
-      console.error("  [Email] Error code   :", sendErr.code);
-      console.error("  [Email] Error message:", sendErr.message);
-      console.error("  [Email] Response     :", sendErr.response || "none");
-      throw sendErr;
+
+      if (error) {
+        console.error("  [Email] Resend returned error:", JSON.stringify(error));
+        throw new Error(error.message);
+      }
+
+      console.log("  [Email] ✓ Email sent successfully via Resend!");
+      console.log("  [Email] Message ID:", data.id);
+    } catch (err) {
+      console.error("  [Email] Send FAILED:", err.message);
+      throw err;
     }
   }
 }
