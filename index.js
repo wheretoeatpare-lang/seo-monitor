@@ -115,13 +115,15 @@ function sleep(ms) {
 
 // Run now or on schedule
 const args = process.argv.slice(2);
-if (args.includes("--now")) {
-  console.log("Running SEO monitor now...");
+const runNow = args.includes("--now") || process.env.RUN_NOW === "true";
+
+if (runNow) {
+  console.log("RUN_NOW detected — running SEO monitor immediately...");
   runSEOMonitor().catch(console.error);
 } else {
   const schedule = process.env.CRON_SCHEDULE || "0 7 * * *";
   console.log(`SEO Monitor scheduler started.`);
   console.log(`Schedule: ${schedule}`);
-  console.log(`Use 'node index.js --now' to run immediately.\n`);
+  console.log(`Tip: Set RUN_NOW=true in Railway variables to trigger immediately.\n`);
   cron.schedule(schedule, () => runSEOMonitor().catch(console.error));
 }
