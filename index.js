@@ -935,10 +935,10 @@ startPolling();
 
 // ── Start server + cron ───────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(\`\n🚀 SEO Monitor Dashboard running on port \${PORT}\`);
-  console.log(\`   Dashboard: http://localhost:\${PORT}\`);
-  console.log(\`   Scan: POST /api/run (x-api-secret header)\`);
-  console.log(\`   Approve: POST /api/approve { approved: [...filePaths] }\n\`);
+  console.log(`\n🚀 SEO Monitor Dashboard running on port ${PORT}`);
+  console.log(`   Dashboard: http://localhost:${PORT}`);
+  console.log(`   Scan: POST /api/run (x-api-secret header)`);
+  console.log(`   Approve: POST /api/approve { approved: [...filePaths] }\n`);
 });
 
 // Daily cron — scans but does NOT auto-commit (needs manual approval via dashboard)
