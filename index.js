@@ -796,8 +796,8 @@ function renderPendingChanges(pending) {
             \${a.primaryKeyword ? \`<div class="card-keyword">🔑 \${escapeHtml(a.primaryKeyword)}</div>\` : ''}
           </div>
           <div class="card-btns">
-            <button class="btn-approve" onclick="approve(\${JSON.stringify(p.filePath)})">✓ Approve</button>
-            <button class="btn-skip" onclick="skip(\${JSON.stringify(p.filePath)})">✗ Skip</button>
+            <button class="btn-approve" onclick="approve('\${p.filePath}')">✓ Approve</button>
+            <button class="btn-skip" onclick="skip('\${p.filePath}')">✗ Skip</button>
           </div>
         </div>
         <div class="card-body">
