@@ -38,7 +38,8 @@ function addLog(msg, type = "info") {
 }
 
 // ── SEO Monitor Core ─────────────────────────────────────────────────────────
-async function runSEOMonitor() {
+// FIX: Accept globalKeywords and targetPages as parameters (were undefined before)
+async function runSEOMonitor(globalKeywords = [], targetPages = []) {
   if (isRunning) {
     addLog("Already running — skipped duplicate trigger", "warn");
     return;
@@ -54,6 +55,8 @@ async function runSEOMonitor() {
 
   addLog(`SEO Monitor started: ${runDate}`, "info");
   addLog(`Site: ${SITE_URL}`, "info");
+  if (globalKeywords.length > 0) addLog(`Global keywords: ${globalKeywords.join(", ")}`, "info");
+  if (targetPages.length > 0) addLog(`Scanning specific pages: ${targetPages.join(", ")}`, "info");
 
   const changed = [];
   const skipped = [];
@@ -61,8 +64,14 @@ async function runSEOMonitor() {
 
   try {
     addLog("Fetching HTML files from GitHub repo...", "info");
-    const htmlFiles = await github.getAllHtmlFiles();
+    let htmlFiles = await github.getAllHtmlFiles();
     addLog(`Found ${htmlFiles.length} HTML files`, "info");
+
+    // FIX: Filter to only targeted pages if specific mode selected
+    if (targetPages.length > 0) {
+      htmlFiles = htmlFiles.filter(f => targetPages.includes(f.path));
+      addLog(`Filtered to ${htmlFiles.length} targeted page(s)`, "info");
+    }
 
     for (const file of htmlFiles) {
       try {
@@ -75,11 +84,11 @@ async function runSEOMonitor() {
         addLog(`  Title (${seo.title.length} chars): "${seo.title.slice(0, 60)}"`, "info");
         addLog(`  Meta (${seo.metaDesc.length} chars): "${seo.metaDesc.slice(0, 60)}"`, "info");
 
-        const pageKws = pageKeywords[file.path] || [];
-        const allKeywords = [...new Set([...globalKeywords, ...pageKws])];
-        if (allKeywords.length > 0) addLog(`  Target keywords: ${allKeywords.join(", ")}`, "info");
+        // FIX: Use globalKeywords param (was referencing undefined variable before)
+        if (globalKeywords.length > 0) addLog(`  Target keywords: ${globalKeywords.join(", ")}`, "info");
+
         const analysis = await seoChecker.checkAndRewrite(
-          seo.title, seo.metaDesc, seo.url, pageText, allKeywords
+          seo.title, seo.metaDesc, seo.url, pageText, globalKeywords
         );
 
         if (analysis.needsChange) {
@@ -122,24 +131,29 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 app.use(express.json());
 
 // Trigger automation
+// FIX: Extract globalKeywords and targetPages from request body and pass to runSEOMonitor
 app.post("/api/run", (req, res) => {
   const secret = req.headers["x-api-secret"] || req.body?.secret;
   if (secret !== API_SECRET) return res.status(401).json({ error: "Unauthorized" });
   if (isRunning) return res.json({ status: "already_running", message: "SEO monitor is already running!" });
-  runSEOMonitor().catch(console.error);
+
+  const globalKeywords = Array.isArray(req.body?.globalKeywords) ? req.body.globalKeywords : [];
+  const targetPages = Array.isArray(req.body?.targetPages) ? req.body.targetPages : [];
+
+  runSEOMonitor(globalKeywords, targetPages).catch(console.error);
   res.json({ status: "started", message: "SEO monitor started!" });
 });
 
 // Get status
+// FIX: Return isScanning (alias of isRunning) so client.js can read it correctly
 app.get("/api/status", (req, res) => {
-  res.json({ isRunning, lastRun, lastResult, logCount: logs.length });
+  res.json({ isRunning, isScanning: isRunning, lastRun, lastResult, logCount: logs.length });
 });
 
 // Get logs
 app.get("/api/logs", (req, res) => {
   res.json({ logs, isRunning });
 });
-
 
 // Config endpoint
 app.get("/api/config", (req, res) => {
@@ -258,6 +272,7 @@ app.get("/", (req, res) => {
   .pill-green { background: rgba(0,229,176,.1); color: var(--success); border: 1px solid rgba(0,229,176,.2); }
   .pill-purple { background: rgba(124,92,252,.1); color: var(--accent); border: 1px solid rgba(124,92,252,.2); }
   .pill-red { background: rgba(255,77,109,.1); color: var(--error); border: 1px solid rgba(255,77,109,.2); }
+  .pill-warn { background: rgba(255,179,64,.1); color: var(--warn); border: 1px solid rgba(255,179,64,.2); }
 
   /* Logs */
   .logs-section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
@@ -351,7 +366,8 @@ app.get("/", (req, res) => {
   </div>
 
   <div class="run-section">
-    <button class="run-btn" id="run-btn" onclick="triggerRun()">
+    <!-- FIX: was triggerRun() — function in client.js is triggerScan() -->
+    <button class="run-btn" id="run-btn" onclick="triggerScan()">
       <span id="btn-icon">▶</span>
       <span id="btn-text">Run SEO Monitor Now</span>
     </button>
