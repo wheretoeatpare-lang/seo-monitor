@@ -147,7 +147,11 @@ app.get("/api/config", (req, res) => {
   res.json({ secret: API_SECRET });
 });
 
-// Serve client.js as static file
-app.use(express.static(__dirname));
+// Serve client.js directly
+const path = require("path");
+app.get("/client.js", (req, res) => {
+  res.setHeader("Content-Type", "application/javascript");
+  res.sendFile(path.join(__dirname, "client.js"));
+});
 
 
