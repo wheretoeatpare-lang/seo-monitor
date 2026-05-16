@@ -4,9 +4,10 @@ let wasRunning = false;
 let scanMode = 'all';
 let globalKeywords = [];
 
-// Tracks per-item decisions: { [id]: 'approved' | 'skipped' }
+// { [id]: 'approved' | 'skipped' }
 let approvalDecisions = {};
 
+// ── Scan mode ─────────────────────────────────────────────────────────────────
 function setScanMode(mode) {
   scanMode = mode;
   document.getElementById('mode-all').classList.toggle('active', mode === 'all');
@@ -14,10 +15,11 @@ function setScanMode(mode) {
   document.getElementById('pages-field').style.display = mode === 'specific' ? 'block' : 'none';
 }
 
+// ── Keyword tags ──────────────────────────────────────────────────────────────
 function handleKwInput(e) {
   if (e.key !== 'Enter') return;
   e.preventDefault();
-  const val = e.target.value.trim();
+  var val = e.target.value.trim();
   if (!val || globalKeywords.includes(val)) { e.target.value = ''; return; }
   globalKeywords.push(val);
   e.target.value = '';
@@ -25,18 +27,18 @@ function handleKwInput(e) {
 }
 
 function removeKw(kw) {
-  globalKeywords = globalKeywords.filter(k => k !== kw);
+  globalKeywords = globalKeywords.filter(function(k) { return k !== kw; });
   renderKwTags();
 }
 
 function renderKwTags() {
-  const el = document.getElementById('kw-tags');
+  var el = document.getElementById('kw-tags');
   el.innerHTML = '';
   globalKeywords.forEach(function(kw) {
-    const tag = document.createElement('span');
+    var tag = document.createElement('span');
     tag.className = 'kw-tag';
     tag.textContent = kw;
-    const x = document.createElement('span');
+    var x = document.createElement('span');
     x.className = 'kw-tag-remove';
     x.textContent = '×';
     x.onclick = function() { removeKw(kw); };
@@ -45,25 +47,27 @@ function renderKwTags() {
   });
 }
 
+// ── Trigger scan ──────────────────────────────────────────────────────────────
 async function triggerScan() {
   try {
-    const targetPages = scanMode === 'specific'
+    var targetPages = scanMode === 'specific'
       ? (document.getElementById('target-pages').value || '').split('\n').map(function(s) { return s.trim(); }).filter(Boolean)
       : [];
 
-    const res = await fetch('/api/run', {
+    var res = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET_CLIENT },
       body: JSON.stringify({ targetPages: targetPages, globalKeywords: globalKeywords })
     });
-    const data = await res.json();
+    var data = await res.json();
     console.log('Scan triggered:', data);
-    // Reset decisions for new scan
     approvalDecisions = {};
+    window.__PENDING__ = [];
     startPolling();
   } catch(e) { console.error('Failed to trigger scan', e); }
 }
 
+// ── Polling ───────────────────────────────────────────────────────────────────
 function startPolling() {
   if (polling) clearInterval(polling);
   polling = setInterval(fetchStatus, 1500);
@@ -79,10 +83,10 @@ async function fetchStatus() {
   } catch(e) {}
 }
 
-// ── Approval Panel ────────────────────────────────────────────────────────────
+// ── Approval panel ────────────────────────────────────────────────────────────
 function renderApprovalPanel(pending) {
-  const panel = document.getElementById('approval-panel');
-  const itemsEl = document.getElementById('approval-items');
+  var panel = document.getElementById('approval-panel');
+  var itemsEl = document.getElementById('approval-items');
 
   if (!pending || pending.length === 0) {
     panel.classList.remove('visible');
@@ -93,19 +97,25 @@ function renderApprovalPanel(pending) {
   itemsEl.innerHTML = '';
 
   pending.forEach(function(p) {
-    const decision = approvalDecisions[p.id];
-    const div = document.createElement('div');
-    div.className = 'approval-item' + (decision === 'approved' ? ' approved' : decision === 'skipped' ? ' skipped' : '');
-    div.id = 'item-' + p.id;
+    var decision = approvalDecisions[p.id];
 
-    // Build reason text combining title + meta reasons
     var reasonParts = [];
     if (!p.titleOk) reasonParts.push('TITLE: ' + (p.basisTitle || p.reasonTitle || ''));
     if (!p.metaOk)  reasonParts.push('META: '  + (p.basisMeta  || p.reasonMeta  || ''));
     var reasonText = reasonParts.join('\n');
 
+    var itemClass = 'approval-item';
+    if (decision === 'approved') itemClass += ' approved';
+    else if (decision === 'skipped') itemClass += ' skipped';
+
+    var div = document.createElement('div');
+    div.className = itemClass;
+    div.id = 'item-' + p.id;
+
     div.innerHTML =
-      '<div class="approval-file">📄 ' + escapeHtml(p.filePath) + ' · <a href="' + escapeHtml(p.url) + '" target="_blank" style="color:var(--muted);font-size:11px">' + escapeHtml(p.url) + '</a></div>' +
+      '<div class="approval-file">📄 ' + escapeHtml(p.filePath) +
+        ' · <a href="' + escapeHtml(p.url) + '" target="_blank" style="color:var(--muted);font-size:11px">' + escapeHtml(p.url) + '</a>' +
+      '</div>' +
 
       '<div class="approval-row">' +
         '<div class="approval-label">Title</div>' +
@@ -122,148 +132,170 @@ function renderApprovalPanel(pending) {
       (reasonText ? '<div class="approval-reason">' + escapeHtml(reasonText) + '</div>' : '') +
 
       '<div class="approval-actions">' +
-        '<button class="btn-approve' + (decision === 'approved' ? ' selected' : '') + '" onclick="decide(\'' + p.id + '\', \'approved\')">✓ Approve &amp; Commit</button>' +
-        '<button class="btn-skip'    + (decision === 'skipped'  ? ' selected' : '') + '" onclick="decide(\'' + p.id + '\', \'skipped\')">✗ Skip</button>' +
+        '<button class="btn-approve' + (decision === 'approved' ? ' selected' : '') +
+          '" onclick="decide(\'' + p.id + '\', \'approved\')">✓ Approve &amp; Commit</button>' +
+        '<button class="btn-skip' + (decision === 'skipped' ? ' selected' : '') +
+          '" onclick="decide(\'' + p.id + '\', \'skipped\')">✗ Skip</button>' +
       '</div>';
 
     itemsEl.appendChild(div);
   });
 
-  updateCommitButton(pending);
+  refreshCommitBar(pending);
 }
 
+// Called when user clicks Approve or Skip on an item
 function decide(id, action) {
   approvalDecisions[id] = action;
-  // Re-render just this item's button states
-  const item = document.getElementById('item-' + id);
+
+  // Update just this card's visual state without re-rendering everything
+  var item = document.getElementById('item-' + id);
   if (item) {
     item.className = 'approval-item ' + (action === 'approved' ? 'approved' : 'skipped');
-    const btnApprove = item.querySelector('.btn-approve');
-    const btnSkip    = item.querySelector('.btn-skip');
+    var btnApprove = item.querySelector('.btn-approve');
+    var btnSkip    = item.querySelector('.btn-skip');
     if (btnApprove) btnApprove.className = 'btn-approve' + (action === 'approved' ? ' selected' : '');
     if (btnSkip)    btnSkip.className    = 'btn-skip'    + (action === 'skipped'  ? ' selected' : '');
   }
-  // Get current pending from last status poll (stored on window)
-  updateCommitButton(window.__PENDING__ || []);
+
+  refreshCommitBar(window.__PENDING__ || []);
 }
 
-function updateCommitButton(pending) {
-  const btn  = document.getElementById('commit-btn');
-  const hint = document.getElementById('commit-hint');
-  if (!btn) return;
+// Update the commit button + hint text based on current decisions
+function refreshCommitBar(pending) {
+  var btn  = document.getElementById('commit-btn');
+  var hint = document.getElementById('commit-hint');
+  if (!btn || !hint) return;
 
-  const decided  = pending.filter(function(p) { return approvalDecisions[p.id]; });
-  const approved = pending.filter(function(p) { return approvalDecisions[p.id] === 'approved'; });
-  const allDone  = decided.length === pending.length;
-
-  btn.disabled = !allDone || approved.length === 0 && decided.length > 0 && allDone
-    // Allow commit even if some skipped, as long as at least one approved
-    ? !(allDone && approved.length > 0)
-    : !allDone;
-
-  // Simpler: enable commit only when all decided AND at least one approved
-  btn.disabled = !(allDone && approved.length > 0);
+  var totalItems   = pending.length;
+  var decidedCount = pending.filter(function(p) { return !!approvalDecisions[p.id]; }).length;
+  var approvedCount= pending.filter(function(p) { return approvalDecisions[p.id] === 'approved'; }).length;
+  var skippedCount = decidedCount - approvedCount;
+  var allDone      = decidedCount === totalItems;
 
   if (!allDone) {
-    hint.textContent = (pending.length - decided.length) + ' page(s) still need a decision';
-  } else if (approved.length === 0) {
-    hint.textContent = 'All skipped — nothing to commit';
-    btn.disabled = false; // allow submitting all-skipped to send email
+    // Still waiting for decisions on some items
+    btn.disabled = true;
+    hint.textContent = (totalItems - decidedCount) + ' page(s) still need a decision';
   } else {
-    hint.textContent = approved.length + ' will be committed, ' + (pending.length - approved.length) + ' skipped';
+    // All decided — enable commit regardless of approve/skip mix
+    btn.disabled = false;
+    if (approvedCount === 0) {
+      hint.textContent = 'All skipped — will send report with no changes';
+    } else {
+      hint.textContent = approvedCount + ' will be committed' + (skippedCount > 0 ? ', ' + skippedCount + ' skipped' : '');
+    }
   }
 }
 
+// Submit decisions to server
 async function submitApprovals() {
-  const pending = window.__PENDING__ || [];
+  var pending = window.__PENDING__ || [];
   if (!pending.length) return;
 
-  const approved = pending.filter(function(p) { return approvalDecisions[p.id] === 'approved'; }).map(function(p) { return p.id; });
-  const rejected = pending.filter(function(p) { return approvalDecisions[p.id] !== 'approved'; }).map(function(p) { return p.id; });
+  var approvedIds = pending
+    .filter(function(p) { return approvalDecisions[p.id] === 'approved'; })
+    .map(function(p) { return p.id; });
+  var rejectedIds = pending
+    .filter(function(p) { return approvalDecisions[p.id] !== 'approved'; })
+    .map(function(p) { return p.id; });
 
-  const btn = document.getElementById('commit-btn');
+  var btn = document.getElementById('commit-btn');
+  var hint = document.getElementById('commit-hint');
   btn.disabled = true;
   btn.textContent = 'Committing...';
+  if (hint) hint.textContent = 'Writing to GitHub — please wait...';
 
   try {
-    const res = await fetch('/api/approve', {
+    var res = await fetch('/api/approve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET_CLIENT },
-      body: JSON.stringify({ approved: approved, rejected: rejected })
+      body: JSON.stringify({ approved: approvedIds, rejected: rejectedIds })
     });
-    const data = await res.json();
+    var data = await res.json();
     console.log('Approve response:', data);
+
+    // Clear local state
     approvalDecisions = {};
     window.__PENDING__ = [];
+
+    // Hide panel and resume polling to pick up final result
     document.getElementById('approval-panel').classList.remove('visible');
+    wasRunning = true; // so polling stops cleanly when server goes idle
     startPolling();
   } catch(e) {
     console.error('Failed to submit approvals', e);
     btn.disabled = false;
     btn.textContent = '▶ Commit Approved to GitHub';
+    if (hint) hint.textContent = 'Error — please try again';
   }
 }
 
 // ── Main UI update ────────────────────────────────────────────────────────────
 function updateUI(status, logsData) {
-  var btn = document.getElementById('run-btn');
-  var btnText = document.getElementById('btn-text');
-  var btnIcon = document.getElementById('btn-icon');
-  var statusDot = document.getElementById('status-dot');
-  var statusText = document.getElementById('status-text');
-  var scheduleInfo = document.getElementById('schedule-info');
+  var btn         = document.getElementById('run-btn');
+  var btnText     = document.getElementById('btn-text');
+  var statusDot   = document.getElementById('status-dot');
+  var statusText  = document.getElementById('status-text');
+  var scheduleInfo= document.getElementById('schedule-info');
 
   var isScanning = status.isScanning || status.isRunning;
   var hasPending = status.pendingApprovals && status.pendingApprovals.length > 0;
 
-  // Save pending for use in decide() / submitApprovals()
   window.__PENDING__ = status.pendingApprovals || [];
 
   if (isScanning) {
     wasRunning = true;
     btn.disabled = true;
     btn.classList.add('running');
-    btnIcon.outerHTML = '<div class="spinner" id="btn-icon"></div>';
+    // Swap to spinner safely
+    var iconEl = document.getElementById('btn-icon');
+    if (iconEl && iconEl.tagName !== 'DIV') iconEl.outerHTML = '<div class="spinner" id="btn-icon"></div>';
     btnText.textContent = 'Scanning Pages...';
     statusDot.className = 'status-dot running';
     statusText.textContent = 'Scanning';
     scheduleInfo.textContent = 'AI is analyzing your pages...';
+
   } else if (hasPending) {
     btn.disabled = false;
     btn.classList.remove('running');
     var iconEl2 = document.getElementById('btn-icon');
-    if (iconEl2) iconEl2.outerHTML = '<span id="btn-icon">▶</span>';
+    if (iconEl2 && iconEl2.tagName === 'DIV') iconEl2.outerHTML = '<span id="btn-icon">▶</span>';
     btnText.textContent = 'Run SEO Monitor Now';
-    statusDot.className = 'status-dot running'; // orange = waiting for action
+    statusDot.className = 'status-dot running'; // amber = needs action
     statusText.textContent = 'Awaiting Approval';
-    scheduleInfo.textContent = 'Review suggestions below before committing';
-    if (polling) { clearInterval(polling); polling = null; } // stop hammering while waiting
+    scheduleInfo.textContent = 'Review suggestions below then click Commit';
+    // Pause polling — no need to hammer while human reviews
+    if (polling) { clearInterval(polling); polling = null; }
+
   } else {
     btn.disabled = false;
     btn.classList.remove('running');
-    var iconEl = document.getElementById('btn-icon');
-    if (iconEl) iconEl.outerHTML = '<span id="btn-icon">▶</span>';
+    var iconEl3 = document.getElementById('btn-icon');
+    if (iconEl3 && iconEl3.tagName === 'DIV') iconEl3.outerHTML = '<span id="btn-icon">▶</span>';
     btnText.textContent = 'Run SEO Monitor Now';
     statusDot.className = 'status-dot idle';
     statusText.textContent = 'Idle';
     scheduleInfo.textContent = 'Runs automatically every day at 7:00 AM';
+
     if (wasRunning) {
       wasRunning = false;
       if (polling) { clearInterval(polling); polling = null; }
     }
   }
 
-  // Render approval panel whenever there are pending items
+  // Render approval panel (no-op if empty)
   renderApprovalPanel(status.pendingApprovals || []);
 
+  // Stats + last run
   if (status.lastResult) {
     var r = status.lastResult;
-    var updEl = document.getElementById('stat-updated');
+    var updEl  = document.getElementById('stat-updated');
     var goodEl = document.getElementById('stat-good');
-    var errEl = document.getElementById('stat-errors');
-    if (updEl) updEl.textContent = r.changed;
+    var errEl  = document.getElementById('stat-errors');
+    if (updEl)  updEl.textContent  = r.changed;
     if (goodEl) goodEl.textContent = r.skipped;
-    if (errEl) errEl.textContent = r.errors;
+    if (errEl)  errEl.textContent  = r.errors;
 
     var lastRunEl = document.getElementById('last-run');
     if (lastRunEl) lastRunEl.style.display = 'flex';
@@ -279,6 +311,7 @@ function updateUI(status, logsData) {
     }
   }
 
+  // Logs
   var logsBody = document.getElementById('logs-body');
   var logCount = document.getElementById('log-count');
   if (logsData.logs && logsData.logs.length > 0) {
@@ -286,7 +319,8 @@ function updateUI(status, logsData) {
     if (logsBody) {
       logsBody.innerHTML = logsData.logs.map(function(l) {
         var time = new Date(l.time).toLocaleTimeString('en-US', { hour12: false });
-        return '<div class="log-line"><span class="log-time">' + time + '</span><span class="log-msg ' + l.type + '">' + escapeHtml(l.msg) + '</span></div>';
+        return '<div class="log-line"><span class="log-time">' + time +
+          '</span><span class="log-msg ' + l.type + '">' + escapeHtml(l.msg) + '</span></div>';
       }).join('');
       logsBody.scrollTop = logsBody.scrollHeight;
     }
