@@ -287,13 +287,18 @@ function updateUI(status, logsData) {
   var statusText   = document.getElementById('status-text');
   var scheduleInfo = document.getElementById('schedule-info');
 
-  var isScanning    = !!(status.isScanning || status.isRunning);
-  var isCommitting  = !!status.isCommitting; // FIX: server tells us commit is in-flight
-  var pending       = status.pendingApprovals || [];
-  var hasPending    = pending.length > 0;
+  var isScanning = !!(status.isScanning || status.isRunning);
+  var isCommitting  = !!status.isCommitting;
+  var pending    = status.pendingApprovals || [];
+  var hasPending = pending.length > 0;
 
-  // Store canonical pending list — IDs are stable per scan session
-  window.__PENDING__ = pending;
+  // FIX: Only lock in the pending list when scan is FULLY done.
+  // While isScanning=true the server pushes items one-by-one, so pending is
+  // incomplete. Updating __PENDING__ mid-scan caused the panel to render with
+  // just the first item and then panelRendered=true blocked all further renders.
+  if (!isScanning) {
+    window.__PENDING__ = pending;
+  }
 
   if (isScanning) {
     wasRunning = true;
@@ -306,9 +311,13 @@ function updateUI(status, logsData) {
     btnText.textContent = 'Scanning Pages...';
     statusDot.className = 'status-dot running';
     statusText.textContent = 'Scanning';
-    scheduleInfo.textContent = 'AI is analyzing your pages...';
+    // FIX: show live count of pages queued so far while scanning
+    var queuedCount = pending.length;
+    scheduleInfo.textContent = queuedCount > 0
+      ? 'AI analyzing pages… ' + queuedCount + ' queued for review so far'
+      : 'AI is analyzing your pages...';
 
-  // FIX: New branch — commit is in-flight, keep UI busy and logs streaming
+  // FIX: Commit in-flight — keep spinner + logs streaming
   } else if (isCommitting) {
     wasRunning = true;
     btn.disabled = true;
@@ -321,7 +330,6 @@ function updateUI(status, logsData) {
     statusDot.className = 'status-dot running';
     statusText.textContent = 'Committing';
     scheduleInfo.textContent = 'Writing approved changes to GitHub & sending email...';
-    // Make sure polling is running so logs keep streaming
     if (!polling) startPolling();
 
   } else if (hasPending) {
@@ -357,8 +365,12 @@ function updateUI(status, logsData) {
     }
   }
 
-  // Draw approval panel (skipped if already drawn)
-  maybeRenderApprovalPanel(pending);
+  // FIX: Only render the approval panel AFTER scanning is fully done.
+  // Previously this ran during the scan too, which rendered the panel with
+  // only the first queued item and then panelRendered=true blocked re-renders.
+  if (!isScanning && !isCommitting) {
+    maybeRenderApprovalPanel(pending);
+  }
 
   // Stats
   if (status.lastResult) {
