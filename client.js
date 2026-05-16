@@ -7,6 +7,9 @@ let globalKeywords = [];
 // { [id]: 'approved' | 'skipped' }
 let approvalDecisions = {};
 
+// Whether the approval panel has already been drawn for this batch
+let panelRendered = false;
+
 // ── Scan mode ─────────────────────────────────────────────────────────────────
 function setScanMode(mode) {
   scanMode = mode;
@@ -61,8 +64,14 @@ async function triggerScan() {
     });
     var data = await res.json();
     console.log('Scan triggered:', data);
+
+    // Reset approval state for fresh scan
     approvalDecisions = {};
+    panelRendered = false;
     window.__PENDING__ = [];
+    document.getElementById('approval-items').innerHTML = '';
+    document.getElementById('approval-panel').classList.remove('visible');
+
     startPolling();
   } catch(e) { console.error('Failed to trigger scan', e); }
 }
@@ -84,38 +93,42 @@ async function fetchStatus() {
 }
 
 // ── Approval panel ────────────────────────────────────────────────────────────
-function renderApprovalPanel(pending) {
+// Only renders once per batch — never wipes DOM while user is deciding
+function maybeRenderApprovalPanel(pending) {
   var panel = document.getElementById('approval-panel');
-  var itemsEl = document.getElementById('approval-items');
 
   if (!pending || pending.length === 0) {
     panel.classList.remove('visible');
+    panelRendered = false;
     return;
   }
 
   panel.classList.add('visible');
+
+  // CRITICAL: skip re-render if panel is already drawn — user may be mid-decision
+  if (panelRendered) {
+    refreshCommitBar();
+    return;
+  }
+
+  panelRendered = true;
+  var itemsEl = document.getElementById('approval-items');
   itemsEl.innerHTML = '';
 
   pending.forEach(function(p) {
-    var decision = approvalDecisions[p.id];
-
     var reasonParts = [];
     if (!p.titleOk) reasonParts.push('TITLE: ' + (p.basisTitle || p.reasonTitle || ''));
     if (!p.metaOk)  reasonParts.push('META: '  + (p.basisMeta  || p.reasonMeta  || ''));
     var reasonText = reasonParts.join('\n');
 
-    var itemClass = 'approval-item';
-    if (decision === 'approved') itemClass += ' approved';
-    else if (decision === 'skipped') itemClass += ' skipped';
-
     var div = document.createElement('div');
-    div.className = itemClass;
+    div.className = 'approval-item';
     div.id = 'item-' + p.id;
 
     div.innerHTML =
       '<div class="approval-file">📄 ' + escapeHtml(p.filePath) +
-        ' · <a href="' + escapeHtml(p.url) + '" target="_blank" style="color:var(--muted);font-size:11px">' + escapeHtml(p.url) + '</a>' +
-      '</div>' +
+        ' · <a href="' + escapeHtml(p.url) + '" target="_blank" style="color:var(--muted);font-size:11px">' +
+        escapeHtml(p.url) + '</a></div>' +
 
       '<div class="approval-row">' +
         '<div class="approval-label">Title</div>' +
@@ -132,75 +145,94 @@ function renderApprovalPanel(pending) {
       (reasonText ? '<div class="approval-reason">' + escapeHtml(reasonText) + '</div>' : '') +
 
       '<div class="approval-actions">' +
-        '<button class="btn-approve' + (decision === 'approved' ? ' selected' : '') +
+        '<button class="btn-approve" id="btn-approve-' + p.id +
           '" onclick="decide(\'' + p.id + '\', \'approved\')">✓ Approve &amp; Commit</button>' +
-        '<button class="btn-skip' + (decision === 'skipped' ? ' selected' : '') +
+        '<button class="btn-skip" id="btn-skip-' + p.id +
           '" onclick="decide(\'' + p.id + '\', \'skipped\')">✗ Skip</button>' +
       '</div>';
 
     itemsEl.appendChild(div);
   });
 
-  refreshCommitBar(pending);
+  refreshCommitBar();
 }
 
-// Called when user clicks Approve or Skip on an item
+// Called when user clicks Approve or Skip
 function decide(id, action) {
   approvalDecisions[id] = action;
 
-  // Update just this card's visual state without re-rendering everything
+  // Update card border
   var item = document.getElementById('item-' + id);
   if (item) {
     item.className = 'approval-item ' + (action === 'approved' ? 'approved' : 'skipped');
-    var btnApprove = item.querySelector('.btn-approve');
-    var btnSkip    = item.querySelector('.btn-skip');
-    if (btnApprove) btnApprove.className = 'btn-approve' + (action === 'approved' ? ' selected' : '');
-    if (btnSkip)    btnSkip.className    = 'btn-skip'    + (action === 'skipped'  ? ' selected' : '');
   }
 
-  refreshCommitBar(window.__PENDING__ || []);
+  // Update button highlights
+  var btnA = document.getElementById('btn-approve-' + id);
+  var btnS = document.getElementById('btn-skip-' + id);
+  if (btnA) btnA.className = 'btn-approve' + (action === 'approved' ? ' selected' : '');
+  if (btnS) btnS.className = 'btn-skip'    + (action === 'skipped'  ? ' selected' : '');
+
+  refreshCommitBar();
 }
 
-// Update the commit button + hint text based on current decisions
-function refreshCommitBar(pending) {
+// Recalculate commit button state from approvalDecisions vs window.__PENDING__
+function refreshCommitBar() {
   var btn  = document.getElementById('commit-btn');
   var hint = document.getElementById('commit-hint');
   if (!btn || !hint) return;
 
-  var totalItems   = pending.length;
-  var decidedCount = pending.filter(function(p) { return !!approvalDecisions[p.id]; }).length;
-  var approvedCount= pending.filter(function(p) { return approvalDecisions[p.id] === 'approved'; }).length;
+  var pending = window.__PENDING__ || [];
+  if (pending.length === 0) return;
+
+  var totalItems    = pending.length;
+  var decidedCount  = 0;
+  var approvedCount = 0;
+
+  for (var i = 0; i < pending.length; i++) {
+    var d = approvalDecisions[pending[i].id];
+    if (d) decidedCount++;
+    if (d === 'approved') approvedCount++;
+  }
+
   var skippedCount = decidedCount - approvedCount;
-  var allDone      = decidedCount === totalItems;
+  var allDone = decidedCount === totalItems;
 
   if (!allDone) {
-    // Still waiting for decisions on some items
     btn.disabled = true;
     hint.textContent = (totalItems - decidedCount) + ' page(s) still need a decision';
+    return;
+  }
+
+  // All decided — always enable the button (even all-skipped, to trigger email)
+  btn.disabled = false;
+
+  if (approvedCount === 0) {
+    btn.textContent = '▶ Submit (No Changes)';
+    hint.textContent = 'All skipped — will send report with no GitHub changes';
   } else {
-    // All decided — enable commit regardless of approve/skip mix
-    btn.disabled = false;
-    if (approvedCount === 0) {
-      hint.textContent = 'All skipped — will send report with no changes';
-    } else {
-      hint.textContent = approvedCount + ' will be committed' + (skippedCount > 0 ? ', ' + skippedCount + ' skipped' : '');
-    }
+    btn.textContent = '▶ Commit Approved to GitHub';
+    hint.textContent = approvedCount + ' will be committed' +
+      (skippedCount > 0 ? ', ' + skippedCount + ' skipped' : '');
   }
 }
 
-// Submit decisions to server
+// Submit decisions to /api/approve
 async function submitApprovals() {
   var pending = window.__PENDING__ || [];
   if (!pending.length) return;
 
-  var approvedIds = pending
-    .filter(function(p) { return approvalDecisions[p.id] === 'approved'; })
-    .map(function(p) { return p.id; });
-  var rejectedIds = pending
-    .filter(function(p) { return approvalDecisions[p.id] !== 'approved'; })
-    .map(function(p) { return p.id; });
+  var approvedIds = [];
+  var rejectedIds = [];
+  for (var i = 0; i < pending.length; i++) {
+    if (approvalDecisions[pending[i].id] === 'approved') {
+      approvedIds.push(pending[i].id);
+    } else {
+      rejectedIds.push(pending[i].id);
+    }
+  }
 
-  var btn = document.getElementById('commit-btn');
+  var btn  = document.getElementById('commit-btn');
   var hint = document.getElementById('commit-hint');
   btn.disabled = true;
   btn.textContent = 'Committing...';
@@ -215,42 +247,49 @@ async function submitApprovals() {
     var data = await res.json();
     console.log('Approve response:', data);
 
-    // Clear local state
+    // Reset all approval state
     approvalDecisions = {};
+    panelRendered = false;
     window.__PENDING__ = [];
 
-    // Hide panel and resume polling to pick up final result
     document.getElementById('approval-panel').classList.remove('visible');
-    wasRunning = true; // so polling stops cleanly when server goes idle
+    document.getElementById('approval-items').innerHTML = '';
+
+    // Resume polling — wasRunning=true so it keeps going until server is idle
+    wasRunning = true;
     startPolling();
+
   } catch(e) {
     console.error('Failed to submit approvals', e);
     btn.disabled = false;
     btn.textContent = '▶ Commit Approved to GitHub';
-    if (hint) hint.textContent = 'Error — please try again';
+    if (hint) hint.textContent = 'Network error — please try again';
   }
 }
 
 // ── Main UI update ────────────────────────────────────────────────────────────
 function updateUI(status, logsData) {
-  var btn         = document.getElementById('run-btn');
-  var btnText     = document.getElementById('btn-text');
-  var statusDot   = document.getElementById('status-dot');
-  var statusText  = document.getElementById('status-text');
-  var scheduleInfo= document.getElementById('schedule-info');
+  var btn          = document.getElementById('run-btn');
+  var btnText      = document.getElementById('btn-text');
+  var statusDot    = document.getElementById('status-dot');
+  var statusText   = document.getElementById('status-text');
+  var scheduleInfo = document.getElementById('schedule-info');
 
-  var isScanning = status.isScanning || status.isRunning;
-  var hasPending = status.pendingApprovals && status.pendingApprovals.length > 0;
+  var isScanning = !!(status.isScanning || status.isRunning);
+  var pending    = status.pendingApprovals || [];
+  var hasPending = pending.length > 0;
 
-  window.__PENDING__ = status.pendingApprovals || [];
+  // Store canonical pending list — IDs are stable per scan session
+  window.__PENDING__ = pending;
 
   if (isScanning) {
     wasRunning = true;
     btn.disabled = true;
     btn.classList.add('running');
-    // Swap to spinner safely
     var iconEl = document.getElementById('btn-icon');
-    if (iconEl && iconEl.tagName !== 'DIV') iconEl.outerHTML = '<div class="spinner" id="btn-icon"></div>';
+    if (iconEl && iconEl.tagName !== 'DIV') {
+      iconEl.outerHTML = '<div class="spinner" id="btn-icon"></div>';
+    }
     btnText.textContent = 'Scanning Pages...';
     statusDot.className = 'status-dot running';
     statusText.textContent = 'Scanning';
@@ -259,20 +298,25 @@ function updateUI(status, logsData) {
   } else if (hasPending) {
     btn.disabled = false;
     btn.classList.remove('running');
-    var iconEl2 = document.getElementById('btn-icon');
-    if (iconEl2 && iconEl2.tagName === 'DIV') iconEl2.outerHTML = '<span id="btn-icon">▶</span>';
+    var icon2 = document.getElementById('btn-icon');
+    if (icon2 && icon2.tagName === 'DIV') {
+      icon2.outerHTML = '<span id="btn-icon">▶</span>';
+    }
     btnText.textContent = 'Run SEO Monitor Now';
-    statusDot.className = 'status-dot running'; // amber = needs action
+    statusDot.className = 'status-dot running';
     statusText.textContent = 'Awaiting Approval';
-    scheduleInfo.textContent = 'Review suggestions below then click Commit';
-    // Pause polling — no need to hammer while human reviews
+    scheduleInfo.textContent = 'Review suggestions below, then click Commit';
+
+    // Stop polling while human reviews — panel is static
     if (polling) { clearInterval(polling); polling = null; }
 
   } else {
     btn.disabled = false;
     btn.classList.remove('running');
-    var iconEl3 = document.getElementById('btn-icon');
-    if (iconEl3 && iconEl3.tagName === 'DIV') iconEl3.outerHTML = '<span id="btn-icon">▶</span>';
+    var icon3 = document.getElementById('btn-icon');
+    if (icon3 && icon3.tagName === 'DIV') {
+      icon3.outerHTML = '<span id="btn-icon">▶</span>';
+    }
     btnText.textContent = 'Run SEO Monitor Now';
     statusDot.className = 'status-dot idle';
     statusText.textContent = 'Idle';
@@ -284,10 +328,10 @@ function updateUI(status, logsData) {
     }
   }
 
-  // Render approval panel (no-op if empty)
-  renderApprovalPanel(status.pendingApprovals || []);
+  // Draw approval panel (skipped if already drawn)
+  maybeRenderApprovalPanel(pending);
 
-  // Stats + last run
+  // Stats
   if (status.lastResult) {
     var r = status.lastResult;
     var updEl  = document.getElementById('stat-updated');
