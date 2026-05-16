@@ -179,9 +179,18 @@ function removeKw(kw) {
 
 function renderKwTags() {
   const el = document.getElementById('kw-tags');
-  el.innerHTML = globalKeywords.map(kw =>
-    '<span class="kw-tag">' + escapeHtml(kw) + '<span class="kw-tag-remove" onclick="removeKw(\'' + escapeHtml(kw) + '\')">&#215;</span></span>'
-  ).join('');
+  el.innerHTML = '';
+  globalKeywords.forEach(function(kw) {
+    const tag = document.createElement('span');
+    tag.className = 'kw-tag';
+    tag.textContent = kw;
+    const x = document.createElement('span');
+    x.className = 'kw-tag-remove';
+    x.textContent = '\u00d7';
+    x.onclick = function() { removeKw(kw); };
+    tag.appendChild(x);
+    el.appendChild(tag);
+  });
 }
 
 async function triggerScan() {
