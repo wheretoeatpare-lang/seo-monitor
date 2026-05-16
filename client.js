@@ -10,6 +10,10 @@ let approvalDecisions = {};
 // Whether the approval panel has already been drawn for this batch
 let panelRendered = false;
 
+// FIX: Guard flag — true while /api/approve request is in-flight.
+// Prevents a stale status poll from re-drawing the approval panel mid-commit.
+let isSubmitting = false;
+
 // ── Scan mode ─────────────────────────────────────────────────────────────────
 function setScanMode(mode) {
   scanMode = mode;
@@ -96,6 +100,10 @@ async function fetchStatus() {
 // Only renders once per batch — never wipes DOM while user is deciding
 function maybeRenderApprovalPanel(pending) {
   var panel = document.getElementById('approval-panel');
+
+  // FIX: Never touch the panel while a commit request is in-flight —
+  // the server may still briefly report stale pendingApprovals.
+  if (isSubmitting) return;
 
   if (!pending || pending.length === 0) {
     panel.classList.remove('visible');
@@ -238,6 +246,8 @@ async function submitApprovals() {
   btn.textContent = 'Committing...';
   if (hint) hint.textContent = 'Writing to GitHub — please wait...';
 
+  isSubmitting = true; // FIX: block panel re-render during in-flight request
+
   try {
     var res = await fetch('/api/approve', {
       method: 'POST',
@@ -248,6 +258,7 @@ async function submitApprovals() {
     console.log('Approve response:', data);
 
     // Reset all approval state
+    isSubmitting = false; // FIX: clear guard
     approvalDecisions = {};
     panelRendered = false;
     window.__PENDING__ = [];
@@ -261,6 +272,7 @@ async function submitApprovals() {
 
   } catch(e) {
     console.error('Failed to submit approvals', e);
+    isSubmitting = false; // FIX: clear guard on error too
     btn.disabled = false;
     btn.textContent = '▶ Commit Approved to GitHub';
     if (hint) hint.textContent = 'Network error — please try again';

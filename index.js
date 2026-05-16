@@ -147,7 +147,10 @@ async function runSEOMonitor(globalKeywords = [], targetPages = []) {
 }
 
 // ── Commit approved pages ────────────────────────────────────────────────────
-async function commitApproved(approvedIds, rejectedIds) {
+// FIX: Accept a snapshot so the caller can clear pendingApprovals immediately
+// before the async GitHub work starts — prevents the approval panel from
+// re-appearing when polling fetches /api/status mid-commit.
+async function commitApproved(approvedIds, rejectedIds, snapshot) {
   const changed = [];
   const rejected = [];
   const errors = [];
@@ -158,7 +161,10 @@ async function commitApproved(approvedIds, rejectedIds) {
   });
   const skipped = meta.skipped || [];
 
-  for (const item of pendingApprovals) {
+  // Use the snapshot passed in; fall back to live array (safety net)
+  const itemsToProcess = snapshot || pendingApprovals;
+
+  for (const item of itemsToProcess) {
     if (approvedIds.includes(item.id)) {
       try {
         const commitMsg = `🤖 SEO update: ${item.filePath} — approved via dashboard`;
@@ -187,7 +193,7 @@ async function commitApproved(approvedIds, rejectedIds) {
     }
   }
 
-  // Clear queue after processing
+  // Queue was already cleared in /api/approve before we started — this is a safety net
   pendingApprovals = [];
   approvalRunMeta = null;
 
@@ -263,7 +269,14 @@ app.post("/api/approve", (req, res) => {
   const approvedIds = Array.isArray(req.body?.approved) ? req.body.approved : [];
   const rejectedIds = Array.isArray(req.body?.rejected) ? req.body.rejected : [];
 
-  commitApproved(approvedIds, rejectedIds).catch(console.error);
+  // FIX: Snapshot then immediately clear pendingApprovals so that any polling
+  // request that arrives while GitHub commits are in-flight will see an empty
+  // queue and won't re-draw the approval panel in the client.
+  const snapshot = [...pendingApprovals];
+  pendingApprovals = [];
+  approvalRunMeta = null; // also clear meta so status is clean
+
+  commitApproved(approvedIds, rejectedIds, snapshot).catch(console.error);
   res.json({ status: "committing", message: `Committing ${approvedIds.length} approved change(s)...` });
 });
 
