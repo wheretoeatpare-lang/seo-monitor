@@ -528,7 +528,7 @@ app.get("/", (req, res) => {
   .kw-tag-remove { cursor: pointer; opacity: .6; font-size: 13px; line-height: 1; }
   .kw-tag-remove:hover { opacity: 1; color: var(--error); }
   .scan-mode-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
-  .scan-mode-btn { flex: 1; padding: 8px; font-size: 12px; font-weight: 700; font-family: 'Space Mono', monospace; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; transition: all .2s; text-align: center; }
+  .scan-mode-btn { flex: 1; padding: 8px; font-size: 12px; font-weight: 700; font-family: 'Space Mono', monospace; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; transition: all .2s; text-align: center; appearance: none; -webkit-appearance: none; position: relative; z-index: 10; }
   .scan-mode-btn.active { background: rgba(124,92,252,.2); border-color: var(--accent); color: var(--accent); }
   @media (max-width: 600px) {
     .stats { grid-template-columns: repeat(2, 1fr); }
@@ -581,9 +581,7 @@ app.get("/", (req, res) => {
     <div class="scan-options-grid">
       <div class="scan-field" id="pages-field" style="display:none">
         <label>Pages to scan (one path per line)</label>
-        <textarea id="target-pages" placeholder="index.html
-about.html
-blog/post-1.html"></textarea>
+        <textarea id="target-pages" placeholder="index.html&#10;about.html&#10;blog/post-1.html"></textarea>
         <div class="field-hint">Leave empty to scan all pages</div>
       </div>
       <div class="scan-field">
