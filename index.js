@@ -50,7 +50,7 @@ function isRunning() {
 }
 
 // ── Phase 1: Scan pages, collect suggestions (NO commits) ─────────────────
-async function runSEOScan() {
+async function runSEOScan({ targetPages = [], globalKeywords = [], pageKeywords = {} } = {}) {
   if (isRunning()) {
     addLog("Already running — skipped duplicate trigger", "warn");
     return;
@@ -71,10 +71,19 @@ async function runSEOScan() {
   addLog(`Site: ${SITE_URL}`, "info");
   addLog(`Mode: SCAN ONLY — changes will require your approval`, "info");
 
+  if (globalKeywords.length > 0) addLog(`Global keywords: ${globalKeywords.join(", ")}`, "info");
+  if (targetPages.length > 0) addLog(`Scanning ${targetPages.length} specific page(s) only`, "info");
+
   try {
-    addLog("Fetching HTML files from GitHub repo...", "info");
-    const htmlFiles = await github.getAllHtmlFiles();
-    addLog(`Found ${htmlFiles.length} HTML files to analyze`, "info");
+    let htmlFiles;
+    if (targetPages.length > 0) {
+      addLog("Fetching specific pages from GitHub repo...", "info");
+      htmlFiles = targetPages.map(p => ({ path: p.trim(), name: p.trim().split("/").pop() }));
+    } else {
+      addLog("Fetching all HTML files from GitHub repo...", "info");
+      htmlFiles = await github.getAllHtmlFiles();
+    }
+    addLog(`Found ${htmlFiles.length} HTML file(s) to analyze`, "info");
 
     for (const file of htmlFiles) {
       try {
@@ -87,8 +96,12 @@ async function runSEOScan() {
         addLog(`  Title (${seo.title.length} chars): "${seo.title.slice(0, 70)}"`, "info");
         addLog(`  Meta (${seo.metaDesc.length} chars): "${seo.metaDesc.slice(0, 70)}"`, "info");
 
+        const pageKws = pageKeywords[file.path] || [];
+        const allKeywords = [...new Set([...globalKeywords, ...pageKws])];
+        if (allKeywords.length > 0) addLog(`  Target keywords: ${allKeywords.join(", ")}`, "info");
+
         const analysis = await seoChecker.checkAndRewrite(
-          seo.title, seo.metaDesc, seo.url, pageText
+          seo.title, seo.metaDesc, seo.url, pageText, allKeywords
         );
 
         if (analysis.needsChange) {
@@ -227,7 +240,8 @@ app.post("/api/run", (req, res) => {
   if (secret !== API_SECRET) return res.status(401).json({ error: "Unauthorized" });
   if (isRunning()) return res.json({ status: "already_running", message: "SEO monitor is already running!" });
   if (scanComplete && pendingChanges.length > 0) return res.json({ status: "pending_review", message: "Scan already done — review pending changes first!" });
-  runSEOScan().catch(console.error);
+  const { targetPages = [], globalKeywords = [], pageKeywords = {} } = req.body || {};
+  runSEOScan({ targetPages, globalKeywords, pageKeywords }).catch(console.error);
   res.json({ status: "started", message: "SEO scan started!" });
 });
 
@@ -494,6 +508,28 @@ app.get("/", (req, res) => {
   .status-dot.idle { background: var(--success); }
   .status-dot.review { background: var(--warn); }
 
+
+  /* ── SCAN OPTIONS ── */
+  .scan-options { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; }
+  .scan-options-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--accent); font-family: 'Space Mono', monospace; margin-bottom: 14px; }
+  .scan-options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 600px) { .scan-options-grid { grid-template-columns: 1fr; } }
+  .scan-field label { display: block; font-size: 11px; font-family: 'Space Mono', monospace; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .scan-field textarea, .scan-field input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: 'Space Mono', monospace; font-size: 12px; padding: 10px 12px;
+    resize: vertical; outline: none; transition: border-color .2s;
+  }
+  .scan-field textarea:focus, .scan-field input:focus { border-color: var(--accent); }
+  .scan-field textarea { height: 90px; }
+  .scan-field .field-hint { font-size: 11px; color: var(--muted); margin-top: 5px; font-family: 'Space Mono', monospace; }
+  .kw-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 0; }
+  .kw-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 3px 10px; border-radius: 99px; background: rgba(124,92,252,.15); color: var(--accent); border: 1px solid rgba(124,92,252,.2); font-family: 'Space Mono', monospace; cursor: default; }
+  .kw-tag-remove { cursor: pointer; opacity: .6; font-size: 13px; line-height: 1; }
+  .kw-tag-remove:hover { opacity: 1; color: var(--error); }
+  .scan-mode-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+  .scan-mode-btn { flex: 1; padding: 8px; font-size: 12px; font-weight: 700; font-family: 'Space Mono', monospace; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; transition: all .2s; text-align: center; }
+  .scan-mode-btn.active { background: rgba(124,92,252,.2); border-color: var(--accent); color: var(--accent); }
   @media (max-width: 600px) {
     .stats { grid-template-columns: repeat(2, 1fr); }
     .comparison { grid-template-columns: 1fr; }
@@ -531,6 +567,31 @@ app.get("/", (req, res) => {
     <div class="stat">
       <div class="stat-val red" id="stat-errors">—</div>
       <div class="stat-label">Errors</div>
+    </div>
+  </div>
+
+
+  <!-- ── SCAN OPTIONS ── -->
+  <div class="scan-options">
+    <div class="scan-options-title">⚙ Scan Options</div>
+    <div class="scan-mode-toggle">
+      <div class="scan-mode-btn active" id="mode-all" onclick="setScanMode('all')">🌐 Scan All Pages</div>
+      <div class="scan-mode-btn" id="mode-specific" onclick="setScanMode('specific')">📄 Specific Pages Only</div>
+    </div>
+    <div class="scan-options-grid">
+      <div class="scan-field" id="pages-field" style="display:none">
+        <label>Pages to scan (one path per line)</label>
+        <textarea id="target-pages" placeholder="index.html
+about.html
+blog/post-1.html"></textarea>
+        <div class="field-hint">Leave empty to scan all pages</div>
+      </div>
+      <div class="scan-field">
+        <label>Target keywords (press Enter to add)</label>
+        <input type="text" id="kw-input" placeholder="e.g. AI SEO tool" onkeydown="handleKwInput(event)">
+        <div class="kw-tags" id="kw-tags"></div>
+        <div class="field-hint">AI will prioritize these keywords for all pages</div>
+      </div>
     </div>
   </div>
 
@@ -588,6 +649,7 @@ app.get("/", (req, res) => {
 </div>
 
 <script>
+  const API_SECRET_CLIENT = '${API_SECRET}';
 const SECRET = "${API_SECRET}";
 let polling = null;
 let wasRunning = false;
@@ -595,34 +657,54 @@ let pendingData = [];
 let approvedSet = new Set(); // filePaths the user approved
 let reviewRendered = false;
 
-async function triggerScan() {
-  const btn = document.getElementById('run-btn');
-  btn.disabled = true;
-  try {
-    const res = await fetch('/api/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-secret': SECRET },
-      body: JSON.stringify({ secret: SECRET })
-    });
-    const data = await res.json();
-    if (data.status === 'already_running') {
-      alert('SEO scan is already running!');
-      btn.disabled = false;
-      return;
-    }
-    if (data.status === 'pending_review') {
-      alert('Scan already done — review your pending changes below!');
-      btn.disabled = false;
-      return;
-    }
-    reviewRendered = false;
-    approvedSet = new Set();
-    startPolling();
-  } catch (err) {
-    alert('Error: ' + err.message);
-    btn.disabled = false;
+let scanMode = 'all';
+  let globalKeywords = [];
+
+  function setScanMode(mode) {
+    scanMode = mode;
+    document.getElementById('mode-all').classList.toggle('active', mode === 'all');
+    document.getElementById('mode-specific').classList.toggle('active', mode === 'specific');
+    document.getElementById('pages-field').style.display = mode === 'specific' ? 'block' : 'none';
   }
-}
+
+  function handleKwInput(e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const val = e.target.value.trim();
+    if (!val || globalKeywords.includes(val)) { e.target.value = ''; return; }
+    globalKeywords.push(val);
+    e.target.value = '';
+    renderKwTags();
+  }
+
+  function removeKw(kw) {
+    globalKeywords = globalKeywords.filter(k => k !== kw);
+    renderKwTags();
+  }
+
+  function renderKwTags() {
+    const el = document.getElementById('kw-tags');
+    el.innerHTML = globalKeywords.map(kw =>
+      '<span class="kw-tag">' + escapeHtml(kw) + '<span class="kw-tag-remove" onclick="removeKw(\'' + escapeHtml(kw) + '\')">×</span></span>'
+    ).join('');
+  }
+
+  async function triggerScan() {
+    if (isRunning) return;
+    try {
+      const targetPages = scanMode === 'specific'
+        ? (document.getElementById('target-pages').value || '').split('\n').map(s => s.trim()).filter(Boolean)
+        : [];
+      const res = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET_CLIENT },
+        body: JSON.stringify({ targetPages, globalKeywords })
+      });
+      const data = await res.json();
+      console.log('Scan triggered:', data);
+      startPolling();
+    } catch(e) { console.error('Failed to trigger scan', e); }
+  }
 
 async function applyApproved() {
   if (approvedSet.size === 0) {

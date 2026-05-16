@@ -44,7 +44,11 @@ class SEOChecker {
   }
 
   // Analyze SEO fields with detailed reasoning — does NOT apply changes
-  async checkAndRewrite(title, metaDesc, url, pageContent) {
+  async checkAndRewrite(title, metaDesc, url, pageContent, targetKeywords = []) {
+
+    const kwContext = targetKeywords.length > 0
+      ? `\n\nTARGET KEYWORDS (you MUST incorporate these into the title and meta description):\n${targetKeywords.map(k => `  - "${k}"`).join('\n')}`
+      : '';
     const prompt = `You are a senior SEO consultant. Analyze these SEO meta fields and determine if they need improvement. Be SPECIFIC about why changes are needed and cite the exact SEO rules being violated.
 
 URL: ${url}
@@ -70,6 +74,8 @@ META DESCRIPTION RULES:
 
 ━━━ TASK ━━━
 For each field, diagnose ALL issues found and explain clearly WHY a change is needed. If a field is already perfect, say so.
+
+${kwContext}
 
 Return ONLY valid JSON (no markdown, no extra text):
 {
