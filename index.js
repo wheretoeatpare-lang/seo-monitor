@@ -26,6 +26,7 @@ const mailer = new EmailReporter(
 
 // ── State ────────────────────────────────────────────────────────────────────
 let isRunning = false;
+let isCommitting = false; // FIX: tracks when commitApproved() is in-flight
 let lastRun = null;
 let lastResult = null;
 let logs = [];
@@ -151,6 +152,7 @@ async function runSEOMonitor(globalKeywords = [], targetPages = []) {
 // before the async GitHub work starts — prevents the approval panel from
 // re-appearing when polling fetches /api/status mid-commit.
 async function commitApproved(approvedIds, rejectedIds, snapshot) {
+  isCommitting = true; // FIX: tell client we are still working
   const changed = [];
   const rejected = [];
   const errors = [];
@@ -212,6 +214,7 @@ async function commitApproved(approvedIds, rejectedIds, snapshot) {
   lastResult = { changed: changed.length, skipped: skipped.length, errors: allErrors, duration, runDate };
   lastRun = new Date().toISOString();
   addLog(`Done! Updated: ${changed.length}, Good: ${skipped.length}, Errors: ${allErrors} (${duration}s)`, "success");
+  isCommitting = false; // FIX: signal to client that all work is done
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -237,6 +240,7 @@ app.get("/api/status", (req, res) => {
   res.json({
     isRunning,
     isScanning: isRunning,
+    isCommitting, // FIX: expose so client keeps polling during async commit
     lastRun,
     lastResult,
     logCount: logs.length,

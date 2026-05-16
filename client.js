@@ -287,9 +287,10 @@ function updateUI(status, logsData) {
   var statusText   = document.getElementById('status-text');
   var scheduleInfo = document.getElementById('schedule-info');
 
-  var isScanning = !!(status.isScanning || status.isRunning);
-  var pending    = status.pendingApprovals || [];
-  var hasPending = pending.length > 0;
+  var isScanning    = !!(status.isScanning || status.isRunning);
+  var isCommitting  = !!status.isCommitting; // FIX: server tells us commit is in-flight
+  var pending       = status.pendingApprovals || [];
+  var hasPending    = pending.length > 0;
 
   // Store canonical pending list — IDs are stable per scan session
   window.__PENDING__ = pending;
@@ -306,6 +307,22 @@ function updateUI(status, logsData) {
     statusDot.className = 'status-dot running';
     statusText.textContent = 'Scanning';
     scheduleInfo.textContent = 'AI is analyzing your pages...';
+
+  // FIX: New branch — commit is in-flight, keep UI busy and logs streaming
+  } else if (isCommitting) {
+    wasRunning = true;
+    btn.disabled = true;
+    btn.classList.add('running');
+    var iconElC = document.getElementById('btn-icon');
+    if (iconElC && iconElC.tagName !== 'DIV') {
+      iconElC.outerHTML = '<div class="spinner" id="btn-icon"></div>';
+    }
+    btnText.textContent = 'Committing to GitHub...';
+    statusDot.className = 'status-dot running';
+    statusText.textContent = 'Committing';
+    scheduleInfo.textContent = 'Writing approved changes to GitHub & sending email...';
+    // Make sure polling is running so logs keep streaming
+    if (!polling) startPolling();
 
   } else if (hasPending) {
     btn.disabled = false;
