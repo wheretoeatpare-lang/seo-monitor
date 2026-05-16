@@ -575,8 +575,8 @@ app.get("/", (req, res) => {
   <div class="scan-options">
     <div class="scan-options-title">⚙ Scan Options</div>
     <div class="scan-mode-toggle">
-      <div class="scan-mode-btn active" id="mode-all" onclick="setScanMode('all')">🌐 Scan All Pages</div>
-      <div class="scan-mode-btn" id="mode-specific" onclick="setScanMode('specific')">📄 Specific Pages Only</div>
+      <button type="button" class="scan-mode-btn active" id="mode-all" onclick="setScanMode('all')">🌐 Scan All Pages</button>
+      <button type="button" class="scan-mode-btn" id="mode-specific" onclick="setScanMode('specific')">📄 Specific Pages Only</button>
     </div>
     <div class="scan-options-grid">
       <div class="scan-field" id="pages-field" style="display:none">
